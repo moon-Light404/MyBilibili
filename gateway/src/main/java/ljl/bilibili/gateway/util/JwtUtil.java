@@ -39,8 +39,8 @@ public class JwtUtil {
 
     public static Claims getClaimsFromToken(String token) {
         Claims claims = Jwts.parser()
-                .setSigningKey(SECRET_KEY)
-                .parseClaimsJws(token)
+                .setSigningKey(SECRET_KEY) // 使用服务器端密钥（SECRET_KEY）验证签名
+                .parseClaimsJws(token)  // 解析令牌并验证签名、过期时间等
                 .getBody();
         return claims;
     }

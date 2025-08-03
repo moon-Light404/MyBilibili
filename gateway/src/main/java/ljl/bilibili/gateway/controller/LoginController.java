@@ -33,24 +33,46 @@ public class LoginController {
     /**
      *登录成功返回放在缓存中的短token和放在http-only-cookie中的长token，失败返回失败响应
      */
+    /**
+     * 密码登录接口：验证用户密码并生成认证令牌
+     * 从请求中获取会话ID（用于验证码校验），调用服务层验证用户凭证，
+     * 若验证成功，生成短期令牌（响应头）和长期令牌（HTTP-only Cookie）并返回用户ID；
+     * 验证失败则返回登录失败状态
+     * @param passwordLoginRequest 登录请求参数（包含用户名、密码、验证码等）
+     * @param exchange 服务交换对象，用于获取请求Cookie（会话ID）和设置响应令牌（头/Cookie）
+     * @return Result<LoginResponse> - 登录结果封装，包含登录状态和用户ID（成功时）
+     */
     @PostMapping("/passwordLogin")
     public Result<LoginResponse> passwordLogin(@RequestBody PasswordLoginRequest passwordLoginRequest, ServerWebExchange exchange) {
+        // 从请求Cookie中获取会话ID（用于关联Redis中的验证码，确保验证码与当前会话匹配）
+        String sessionId = exchange.getRequest().getCookies().getFirst(SESSIONID).getValue();
 
-        String sessionId=exchange.getRequest().getCookies().getFirst(SESSIONID).getValue();
-        Map<String, Object> map = loginService.passwordLogin(passwordLoginRequest,sessionId);
-        if (map.size()>0) {
-            Integer userId=(Integer) map.get(USERIDENTITY);
+        // 调用服务层执行密码登录逻辑（验证用户名密码、验证码有效性等）
+        Map<String, Object> map = loginService.passwordLogin(passwordLoginRequest, sessionId);
+
+        // 登录成功（服务层返回非空map，包含用户ID和令牌）
+        if (map.size() > 0) {
+            // 从返回结果中提取用户ID、短期令牌、长期令牌
+            Integer userId = (Integer) map.get(USERIDENTITY);
             String shortJwt = (String) map.get(SHORT_TOKEN);
-            String longJwt=(String)map.get(LONG_TOKEN);
-                    exchange.getResponse().getHeaders().add(SHORT_TOKEN, shortJwt);
+            String longJwt = (String) map.get(LONG_TOKEN);
+
+            // 将短期令牌放入响应头（供前端存储，用于后续API请求的身份验证）
+            exchange.getResponse().getHeaders().add(SHORT_TOKEN, shortJwt);
+
+            // 构建长期令牌的HTTP-only Cookie（增强安全性，防止客户端脚本访问，降低XSS风险）
             ResponseCookie cookie = ResponseCookie.from(LONG_TOKEN, longJwt)
-                    .httpOnly(true)
-                    .path("/")
-                    .maxAge(60 * 30)
+                    .httpOnly(true)  // 设置HTTP-only，禁止JavaScript读取
+                    .path("/")       // Cookie生效路径为全站
+                    .maxAge(60 * 30) // 有效期30分钟（与短期令牌过期时间一致）
                     .build();
             exchange.getResponse().addCookie(cookie);
+
+            // 返回登录成功结果（包含用户ID和成功状态）
             return Result.data(new LoginResponse().setStatus(true).setUserId(userId));
         }
+
+        // 登录失败（服务层返回空map），返回失败状态
         return Result.data(new LoginResponse().setStatus(false));
     }
 

@@ -51,7 +51,7 @@ spring:
           lower-case-service-id: true
       routes:
         - id: websocket
-          uri: ws://localhost:1688
+          uri: ws://localhost:1688 # 请求的目标服务地址
           predicates:
             - Path=/ljl/chat
         - id: route1

@@ -17,6 +17,6 @@ public class SendDBChangeCotroller {
     @ApiIgnore
     @PostMapping("/sendDBChangeNotice")
     public void sendDBChangeNotice(@RequestBody Map<String,Object> map) throws JsonProcessingException {
-    sendDBChangeService.sendDBChangeNotice(map);
+        sendDBChangeService.sendDBChangeNotice(map);
     }
 }

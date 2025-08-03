@@ -70,30 +70,56 @@ public class MysqlToEsServiceImpl implements MysqlToEsService {
     /**
      *视频全量同步
      */
+    /**
+     * 视频数据全量同步至Elasticsearch
+     * 功能：从MySQL关联查询视频基础信息、用户信息及视频统计数据，转换为ES文档格式并批量写入视频索引
+     * @return 同步是否成功（true表示成功）
+     * @throws IOException ES客户端操作可能抛出的IO异常
+     */
     @Override
     public Boolean videoMysqlToEs() throws IOException {
-        //查询出所有视频并转换成map插入es
+        // 构建多表关联查询条件：用于从MySQL关联查询视频相关数据
         MPJLambdaWrapper<Video> wrapper = new MPJLambdaWrapper<>();
+        // 关联用户表：获取视频作者信息（如昵称）
         wrapper.leftJoin(User.class, User::getId, Video::getUserId);
+        // 关联视频数据表：获取视频统计数据（如播放量、弹幕数）
         wrapper.leftJoin(VideoData.class, VideoData::getVideoId, Video::getId);
+
+        // 筛选需要同步的字段：仅选择ES索引所需的字段，减少数据传输量
+        // 视频基础字段：封面、简介、创建时间、时长、播放地址
         wrapper.select(Video::getCover, Video::getIntro, Video::getCreateTime, Video::getLength, Video::getUrl);
+        // 视频统计字段：弹幕数、播放量（来自VideoData表）
         wrapper.select(VideoData::getDanmakuCount, VideoData::getPlayCount);
-        wrapper.selectAs(Video::getName, VideoKeywordSearchResponse::getVideoName);
-        wrapper.selectAs(User::getNickname, VideoKeywordSearchResponse::getAuthorName);
-        wrapper.selectAs(Video::getId, VideoKeywordSearchResponse::getVideoId);
-        wrapper.selectAs(User::getId, VideoKeywordSearchResponse::getAuthorId);
+        // 字段别名映射：将MySQL字段名转换为ES文档中的字段名（与VideoKeywordSearchResponse对应）
+        wrapper.selectAs(Video::getName, VideoKeywordSearchResponse::getVideoName);       // 视频名称 -> video_name
+        wrapper.selectAs(User::getNickname, VideoKeywordSearchResponse::getAuthorName);  // 作者昵称 -> author_name
+        wrapper.selectAs(Video::getId, VideoKeywordSearchResponse::getVideoId);         // 视频ID -> video_id
+        wrapper.selectAs(User::getId, VideoKeywordSearchResponse::getAuthorId);         // 作者ID -> author_id
+
+        // 执行关联查询：获取满足条件的视频数据列表（封装为VideoKeywordSearchResponse对象）
         List<VideoKeywordSearchResponse> list = videoMapper.selectJoinList(VideoKeywordSearchResponse.class, wrapper);
+
+        // 转换数据格式：将Java对象列表转换为Map列表，便于ES文档构建
         List<Map<String, Object>> mapList = new ArrayList<>();
         for (VideoKeywordSearchResponse response : list) {
             mapList.add(objectMapper.convertValue(response, Map.class));
         }
+
+        // 批量写入ES：遍历Map列表，为每个视频数据创建ES索引请求并执行
         for (Map<String, Object> map : mapList) {
+            // 创建ES索引请求：指定视频索引名称（VIDEO_INDEX_NAME）
             IndexRequest indexRequest = new IndexRequest(Constant.VIDEO_INDEX_NAME);
+            // 设置文档ID：使用视频ID作为ES文档ID（确保唯一性）
             indexRequest.id(String.valueOf(map.get(Constant.VIDEO_INDEX_ID)));
+            // 设置文档内容：将Map数据转换为JSON格式写入ES
             indexRequest.source(map, XContentType.JSON);
+            // 执行索引操作：发送请求到ES服务端
             client.index(indexRequest, RequestOptions.DEFAULT);
         }
+
+        // 同步用户数据：视频同步完成后，触发用户相关数据（如作品数）的更新
         updateUserData();
+
         return true;
     }
     /**

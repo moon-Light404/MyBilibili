@@ -72,6 +72,7 @@ public class VideoEncodeConsumer implements RocketMQListener<MessageExt> {
 //            String filePath = "/var/temp";
             Video updateVideo=new Video().setId(uploadVideo.getVideoId());
             String videoFileName="video";
+            // 创建临时目录存储视频和封面文件（避免永久占用磁盘）
             File file = new File(filePath, videoFileName);
             String coverFileName = uploadVideo.getVideoName() + UUID.randomUUID().toString().substring(0, 8) + ".jpg";
             File coverFile = new File(filePath, coverFileName);
@@ -83,7 +84,9 @@ public class VideoEncodeConsumer implements RocketMQListener<MessageExt> {
                 String contentType = "image/jpeg";
                 ScreenExtractor screenExtractor = new ScreenExtractor();
                 screenExtractor.renderOneImage(multimediaObject, -1, -1, 1000, coverFile, 1);
+                // 上传封面到 MinIO 并更新数据库
                 CustomMultipartFile coverMultipartFile = new CustomMultipartFile(new FileInputStream(coverFile), coverFileName, contentType);
+                // 远程调用上传封面
                 videoClient.uploadVideoCover(coverMultipartFile);
                 String prefixPath="https://labilibili.com/video-cover/";
                 String cover=prefixPath+coverFileName;
@@ -114,10 +117,12 @@ public class VideoEncodeConsumer implements RocketMQListener<MessageExt> {
                     length = totalLength / 60 + ":" + totalLength % 60;
                 }
             }
+            // 同步时长到数据库并发送变更通知
             map.put(OPERATION_TYPE, OPERATION_TYPE_UPDATE);
             map.put(TABLE_NAME, VIDEO_TABLE_NAME);
             map.put(VIDEO_LENGTH, length);
             map.put(VIDEO_ID, uploadVideo.getVideoId());
+            // 发送数据库变更通知（用于同步到 ES 等）
             sendDBChangeService.sendDBChangeNotice(map);
             videoMapper.updateById(updateVideo.setLength(length));
             String rightFormat = "h264";

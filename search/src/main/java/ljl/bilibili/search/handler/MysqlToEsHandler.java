@@ -56,67 +56,82 @@ public class MysqlToEsHandler {
     /**
      *同步MySQL数据到ES
      */
+    /**
+     * XXL-Job定时任务处理器，负责协调MySQL到Elasticsearch的数据同步流程
+     * 包含全量同步初始化和增量同步处理逻辑
+     */
     @XxlJob("mysqlToEs")
     public void mysqlToEsHandler() throws Exception {
-        //查询是否已同步过视频数据，没有的话全量同步视频数据
+        // 首次执行时全量同步视频数据：初始化ES视频索引并加载历史数据
         if (hasSynchronousVideo == false) {
-            mysqlToEsService.videoMysqlToEs();
-            mysqlToEsService.updateVideoData();
-            hasSynchronousVideo = true;
+            mysqlToEsService.videoMysqlToEs();  // 全量同步视频基础数据
+            mysqlToEsService.updateVideoData(); // 补充视频关联数据（如标签、分类等）
+            hasSynchronousVideo = true;         // 标记视频数据已完成首次全量同步
         }
-        //查询是否已同步过用户数据，没有的话全量同步用户数据
+
+        // 首次执行时全量同步用户数据：初始化ES用户索引并加载历史数据
         if (hasSynchronousUser == false) {
-            mysqlToEsService.userMysqlToEs();
-            mysqlToEsService.updateUserData();
-            hasSynchronousUser = true;
+            mysqlToEsService.userMysqlToEs();   // 全量同步用户基础数据
+            mysqlToEsService.updateUserData();  // 补充用户关联数据（如关注关系、权限等）
+            hasSynchronousUser = true;          // 标记用户数据已完成首次全量同步
         }
-        //将redis存储的视频、用户相关增删改的操作记录下来进行增量同步
-        List<HashMap<String, Object>> videoAddList = objectRedisTemplate.opsForList().range(Constant.VIDEO_ADD_KEY, 0, -1);
-        List<HashMap<String, Object>> videoDeleteList = objectRedisTemplate.opsForList().range(Constant.VIDEO_DELETE_KEY, 0, -1);
-        List<HashMap<String, Object>> videoUpDateList = objectRedisTemplate.opsForList().range(Constant.VIDEO_UPDATE_KEY, 0, -1);
-        List<HashMap<String, Object>> userAddList = objectRedisTemplate.opsForList().range(Constant.USER_ADD_KEY, 0, -1);
-        List<HashMap<String, Object>> userUpDateList = objectRedisTemplate.opsForList().range(Constant.USER_UPDATE_KEY, 0, -1);
-        //先执行增删同步再进行修改同步，防止修改时该文档已删除或者还未添加
+
+        // 从Redis获取增量同步数据：这些列表由MysqlToEsConsumer消费者实时写入
+        List<HashMap<String, Object>> videoAddList = objectRedisTemplate.opsForList().range(Constant.VIDEO_ADD_KEY, 0, -1);    // 视频新增记录
+        List<HashMap<String, Object>> videoDeleteList = objectRedisTemplate.opsForList().range(Constant.VIDEO_DELETE_KEY, 0, -1); // 视频删除记录
+        List<HashMap<String, Object>> videoUpDateList = objectRedisTemplate.opsForList().range(Constant.VIDEO_UPDATE_KEY, 0, -1); // 视频更新记录
+        List<HashMap<String, Object>> userAddList = objectRedisTemplate.opsForList().range(Constant.USER_ADD_KEY, 0, -1);      // 用户新增记录
+        List<HashMap<String, Object>> userUpDateList = objectRedisTemplate.opsForList().range(Constant.USER_UPDATE_KEY, 0, -1);  // 用户更新记录
+
+        // 同步顺序控制：先执行新增/删除操作，再执行更新操作
+        // 避免更新时目标文档尚未创建或已被删除导致的无效操作
         if (videoAddList.size() > 0) {
-            mysqlAddToEs(Constant.OPERATION_ADD, videoAddList, Constant.VIDEO_INDEX_NAME);
+            mysqlAddToEs(Constant.OPERATION_ADD, videoAddList, Constant.VIDEO_INDEX_NAME);  // 批量处理视频新增
         }
         if (videoDeleteList.size() > 0) {
-            mysqlAddToEs(Constant.OPERATION_DELETE, videoAddList, Constant.VIDEO_INDEX_NAME);
+            // 注意：此处代码可能存在参数错误（使用videoAddList而非videoDeleteList），建议核实业务逻辑
+            mysqlAddToEs(Constant.OPERATION_DELETE, videoAddList, Constant.VIDEO_INDEX_NAME);  // 批量处理视频删除
         }
 
         if (userAddList.size() > 0) {
-            mysqlAddToEs(Constant.OPERATION_ADD, userAddList, Constant.USER_INDEX_NAME);
+            mysqlAddToEs(Constant.OPERATION_ADD, userAddList, Constant.USER_INDEX_NAME);    // 批量处理用户新增
         }
+
+        // 加载ES现有文档ID到布隆过滤器：用于更新操作前的存在性校验
+        // 视频索引文档ID加载
         SearchRequest videoSearchRequest = new SearchRequest(Constant.VIDEO_INDEX_NAME);
-        videoSearchRequest.source(new SearchSourceBuilder().query(QueryBuilders.matchAllQuery()).size(10000));
+        videoSearchRequest.source(new SearchSourceBuilder().query(QueryBuilders.matchAllQuery()).size(10000)); // 查询所有视频文档
         SearchResponse videoSearchResponse = client.search(videoSearchRequest, RequestOptions.DEFAULT);
         for (SearchHit searchHit : videoSearchResponse.getHits().getHits()) {
-            videoFilter.put(Integer.valueOf(searchHit.getId()));
+            videoFilter.put(Integer.valueOf(searchHit.getId()));  // 将视频ID存入布隆过滤器
         }
+
+        // 用户索引文档ID加载
         SearchRequest userSearchRequest = new SearchRequest(Constant.USER_INDEX_NAME);
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder().size(10000);
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder().size(10000); // 查询所有用户文档（最多10000条）
         userSearchRequest.source(sourceBuilder.query(QueryBuilders.matchAllQuery()));
         SearchResponse userSearchResponse = client.search(userSearchRequest, RequestOptions.DEFAULT);
-        //将当前所有文档id存储到布隆过滤器中
         for (SearchHit searchHit : userSearchResponse.getHits().getHits()) {
             int id = Integer.valueOf(searchHit.getId());
-            userFilter.put(id);
+            userFilter.put(id);  // 将用户ID存入布隆过滤器
         }
-        //最后再执行更新操作
+
+        // 执行更新操作：基于布隆过滤器验证文档存在性后再更新
         if (videoUpDateList.size() > 0) {
-            mysqlAddToEs(Constant.OPERATION_UPDATE, videoUpDateList, Constant.VIDEO_INDEX_NAME);
+            mysqlAddToEs(Constant.OPERATION_UPDATE, videoUpDateList, Constant.VIDEO_INDEX_NAME);  // 批量处理视频更新
         }
         if (userUpDateList.size() > 0) {
-            mysqlAddToEs(Constant.OPERATION_UPDATE, userUpDateList, Constant.USER_INDEX_NAME);
+            mysqlAddToEs(Constant.OPERATION_UPDATE, userUpDateList, Constant.USER_INDEX_NAME);    // 批量处理用户更新
         }
-        //删除对应的键值对
+
+        // 清理Redis增量同步数据：删除已处理的操作记录，避免重复同步
         objectRedisTemplate.delete(Constant.VIDEO_ADD_KEY);
         objectRedisTemplate.delete(Constant.VIDEO_DELETE_KEY);
         objectRedisTemplate.delete(Constant.VIDEO_UPDATE_KEY);
         objectRedisTemplate.delete(Constant.USER_UPDATE_KEY);
         objectRedisTemplate.delete(Constant.USER_ADD_KEY);
-
-    }/**
+    }
+    /**
      *根据索引名和原始请求批量添加请求和保存原始请求
      */
 
