@@ -26,8 +26,8 @@ public class JwtUtil {
      */
     private static String generateToken(Integer userId, int expirationTime) {
         Map<String, Object> claims = new HashMap<>(1);
-        claims.put(JWT_ROLE, JWT_ROLE_NAME);
-        claims.put(USERIDENTITY,userId);
+        claims.put(JWT_ROLE, JWT_ROLE_NAME); // role:user
+        claims.put(USERIDENTITY,userId); // "userId"
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(TOKEN_SUBJECT)

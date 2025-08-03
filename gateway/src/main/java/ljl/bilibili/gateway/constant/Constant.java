@@ -30,10 +30,10 @@ public class Constant {
 
     public static final String SHORT_TOKEN="shortAuthorization";
     public static final String LONG_TOKEN="longAuthorization";
-    public static final int SHORT_TOKEN_EXPIRATION = 30 * 60 * 1000;
+    public static final int SHORT_TOKEN_EXPIRATION = 30 * 60 * 1000; // 30分钟
     public static final String SECRET_KEY = "labilibili_key";
     public static final String TOKEN_SUBJECT="labilibili";
-    public static final int LONG_TOKEN_EXPIRATION = 7 * 24 * 60 * 60 * 1000;
+    public static final int LONG_TOKEN_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 7天
     public static final String JWT_ROLE="role";
     public static final String JWT_ROLE_NAME="user";
     public static final String TABLE_NAME="table";
