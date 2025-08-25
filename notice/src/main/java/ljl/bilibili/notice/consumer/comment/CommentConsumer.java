@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
         topic = "comment",
         consumerGroup = "comment-group",
         consumeMode = ConsumeMode.CONCURRENTLY
+        // 设置消息消费模式为 并发消费（Concurrent Consumption），不严格保证消费顺序
 )
 public class CommentConsumer implements RocketMQListener<MessageExt> {
     @Resource
@@ -37,9 +38,6 @@ public class CommentConsumer implements RocketMQListener<MessageExt> {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
-            commentNoticeMapper.insert(commentNotice);
-
-
-
+        commentNoticeMapper.insert(commentNotice);
     }
 }

@@ -85,6 +85,7 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
             String coverFile = uploadVideoRequest.getVideoCover();
             String url = "http://localhost:9000/video/" + uploadVideoRequest.getUrl();
             video.setUrl(url);
+            // 如果视频有封面
             if (coverFile != null && coverFile != "") {
 //                hasCover=true;
                 String prefixPath = "http://localhost:9000/video-cover/";
@@ -103,14 +104,19 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
                 CustomMultipartFile coverMultipartFile = new CustomMultipartFile(decodedBytes, coverFileName, imgContentType);
                 queryWrapper.eq(Video::getCover, UUID.randomUUID().toString().substring(0, 8) + coverFileName);
                 minioService.uploadImgFile(coverFileName, coverMultipartFile.getInputStream(), imgContentType);
+                // 视频上传消息发送到队列
                 client.sendUploadNotice(new UploadVideo().setVideoId(video.getId()).setVideoName(video.getName()).setUrl(url).setHasCover(true));
                 User user = userMapper.selectById(uploadVideoRequest.getUserId());
+                // 视频动态推送到队列
                 client.dynamicNotice(uploadVideoRequest.toCoverDynamic(user, video));
+                // 视频无封面
             } else {
                 videoMapper.insert(video);
                 videoDataMapper.insert(new VideoData().setVideoId(video.getId()));
+                // 视频上传消息发送至队列
                 client.sendUploadNotice(new UploadVideo().setVideoId(video.getId()).setVideoName(video.getName()).setUrl(url).setHasCover(false));
                 User user = userMapper.selectById(uploadVideoRequest.getUserId());
+                // 视频动态推送到队列
                 client.dynamicNotice(uploadVideoRequest.toNoCoverDynamic(user, video));
             }
 
@@ -247,13 +253,25 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
     /**
      * 上传视频时获取视频封面
      */
+    /**
+     * 处理视频分片上传并生成封面
+     * 功能：接收视频分片，验证标识符，在首次处理时生成视频封面，上传分片到存储，并在所有分片上传完成后合并文件
+     * @param uploadPartRequest 分片上传请求对象，包含分片信息、文件流等
+     * @return 包含最终视频名称和封面Base64编码的结果列表
+     * @throws（IO/编码/存储服务等相关），具体参见方法声明
+     */
     @Override
     public Result<List<String>> uploadPart(UploadPartRequest uploadPartRequest) throws IOException, EncoderException, ServerException, InsufficientDataException, ErrorResponseException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        // 处理resumableIdentifier，截取逗号前的有效标识符部分
         int commaIndex = uploadPartRequest.getResumableIdentifier().indexOf(',');
         uploadPartRequest.setResumableIdentifier(uploadPartRequest.getResumableIdentifier().substring(0, commaIndex));
         String resumableIdentifier = uploadPartRequest.getResumableIdentifier();
+
+        // 最终视频名称和封面Base64编码（用于返回结果）
         String videoName = "";
         String videoCover = "";
+
+        // 【已注释】原意图：校验第一个分片是否为MP4文件，防止恶意文件上传
 //        if(uploadPartRequest.getResumableChunkNumber()==1){
 //            String path = Files.createTempDirectory(".tmp").toString();
 //            File file = new File(path, "test");
@@ -269,49 +287,82 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
 //                log.info("文件无问题");
 //            }
 //        }
+
+        // 如果当前上传记录不存在，或尚未生成封面，则执行封面生成逻辑
         if (uploadPartMap.get(resumableIdentifier) == null || uploadPartMap.get(resumableIdentifier).getHasCutImg() == false) {
+            // 读取当前分片的文件流
             InputStream videoFileInputStream = uploadPartRequest.getFile().getInputStream();
             byte[] bytes = IoUtil.readBytes(videoFileInputStream);
             ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+
+            // 创建临时目录和文件（用于提取封面）
             String filePath = Files.createTempDirectory(".tmp").toString();
-            String coverFileName = UUID.randomUUID().toString().substring(0, 10) + ".jpg";
-            String videoFileName = "video";
+            String coverFileName = UUID.randomUUID().toString().substring(0, 10) + ".jpg"; // 封面文件名（带随机前缀）
+            String videoFileName = "video"; // 临时视频文件名
             File directory = new File(filePath);
-            File videoFile = new File(filePath, videoFileName);
-            File coverFile = new File(directory, coverFileName);
+            File videoFile = new File(filePath, videoFileName); // 临时视频文件
+            File coverFile = new File(directory, coverFileName); // 临时封面文件
+
+            // 将分片文件流写入临时视频文件
             Files.copy(byteArrayInputStream, Paths.get(videoFile.getAbsolutePath()), StandardCopyOption.REPLACE_EXISTING);
+
+            // 使用JAVE库提取视频第一帧作为封面
             ScreenExtractor screenExtractor = new ScreenExtractor();
             MultimediaObject multimediaObject = new MultimediaObject(videoFile);
-            screenExtractor.renderOneImage(multimediaObject, -1, -1, 1000, coverFile, 1);
+            screenExtractor.renderOneImage(multimediaObject, -1, -1, 1000, coverFile, 1); // 参数：视频对象、宽(-1保持原宽)、高(-1保持原高)、提取时间(ms)、输出文件、质量
+
+            // 若封面文件生成成功，编码为Base64并更新上传状态
             if (coverFile.exists()) {
-                log.info("exist");
+                log.info("封面文件生成成功");
                 InputStream inputStream = new FileInputStream(coverFile);
-                String cover = Base64.encode(IoUtil.readBytes(inputStream));
-                log.info(cover.substring(0, 20));
+                String cover = Base64.encode(IoUtil.readBytes(inputStream)); // 封面图片Base64编码
+                log.info("封面Base64编码前20位：" + cover.substring(0, 20));
+
+                // 清理临时文件
                 videoFile.delete();
                 coverFile.delete();
+
+                // 更新上传状态：标记已生成封面，并存储封面编码
                 UploadPart uploadPart = uploadPartMap.getOrDefault(resumableIdentifier, new UploadPart());
                 uploadPart.setHasCutImg(true);
                 uploadPart.setCover(cover);
                 uploadPartMap.put(resumableIdentifier, uploadPart);
             }
-
         }
-        String name = resumableIdentifier + UUID.randomUUID().toString().substring(0, 10);
+        /**
+         * uploadPartMap---> UploadPart---> partMap
+         *  1. uploadPartMap---> UploadPart
+         *  文件名/标识符----> 分片集合（已上传分片数、是否截取封面、封面的base64图像编码、partMap）
+         *  2. UploadPart---> partMap
+         *  partMap: 分片序号---> 分片文件名
+         */
+        // 生成当前分片的唯一名称并上传到MinIO
+        String name = resumableIdentifier + UUID.randomUUID().toString().substring(0, 10); // 分片名称（标识符+随机串）
+        // 上传分片文件到minio （分片文件名、分片文件流、文件类型）
         minioService.uploadVideoFile(name, uploadPartRequest.getFile().getInputStream(), VIDEO_TYPE);
-//        log.info(uploadPartMap.toString());
+
+        // 更新分片上传状态：记录当前分片编号与分片名称的映射关系
         Map<Integer, String> newUploadPartMap = uploadPartMap.getOrDefault(resumableIdentifier, new UploadPart()).getPartMap();
+        // 存入分片序号--分片文件名
         newUploadPartMap.put(uploadPartRequest.getResumableChunkNumber(), name);
         UploadPart uploadPart = uploadPartMap.getOrDefault(resumableIdentifier, new UploadPart());
+        // 更新各个分片的状态
         uploadPart.setPartMap(newUploadPartMap);
         uploadPartMap.put(resumableIdentifier, uploadPart);
+
+        // 累加已上传分片数量，判断是否所有分片均已上传完成
         uploadPartMap.get(resumableIdentifier).setTotalCount(uploadPartMap.get(resumableIdentifier).getTotalCount() + 1);
         if (uploadPartMap.get(resumableIdentifier).getTotalCount().equals(uploadPartRequest.getResumableTotalChunks())) {
-            log.info("合并");
+            log.info("所有分片上传完成，开始合并文件");
+            // 生成最终视频名称，获取封面编码
             videoName = resumableIdentifier + UUID.randomUUID().toString().substring(0, 10);
             videoCover = uploadPartMap.get(resumableIdentifier).getCover();
+            // 调用MinIO服务合并分片文件
             minioService.composePart(resumableIdentifier, videoName);
         }
+
+        // 封装结果：视频名称和封面编码
+        // 只有最终合并所有分片文件后，才返回视频名称和封面编码，否则为null
         List<String> list = new ArrayList<>();
         list.add(videoName);
         list.add(videoCover);

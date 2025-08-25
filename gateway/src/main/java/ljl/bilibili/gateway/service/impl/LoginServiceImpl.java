@@ -217,7 +217,8 @@ public class LoginServiceImpl implements LoginService {
 
         // 6. 会话ID与验证码关联存储（Redis）
         if (cookie == null) {
-            // 客户端无SESSIONID：生成新会话ID（UUID前15位），存入结果映射并关联验证码
+            // 首次请求：客户端无SESSIONID：生成新会话ID（UUID前15位），存入结果映射并关联验证码
+            // 后续请求客户端需携带此Cookie以验证验证码
             String sessionId = UUID.randomUUID().toString().substring(0, 15);
             captchaMap.put(SESSIONID, sessionId);
             redisTemplate.opsForValue().set(sessionId, code.toString()); // KEY: sessionId, VALUE: 验证码

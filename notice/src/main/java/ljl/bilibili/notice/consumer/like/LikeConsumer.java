@@ -16,13 +16,14 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.nio.charset.StandardCharsets;
 /**
- *点赞与取消点赞消费者，按顺序消费避免出现取消点赞消息在点赞消息之前触发导致异常的情况，但设置为并发执行其实也可以，rocketmq有重试机制，总会等到点赞消息生成的时刻
+ *点赞与取消点赞消费者，按顺序消费避免出现取消点赞消息在点赞消息之前触发导致异常的情况，但设置为并发执行其实也可以，
+ * rocketmq有重试机制，总会等到点赞消息生成的时刻
  */
 @Service
 @RocketMQMessageListener(
         topic = "like",
         consumerGroup = "like-group",
-        consumeMode = ConsumeMode.ORDERLY
+        consumeMode = ConsumeMode.ORDERLY // 对同一消息队列（Message Queue）的消息，按发送顺序依次处理（先发送的消息先被消费）
 )
 public class LikeConsumer implements RocketMQListener<MessageExt> {
     @Resource

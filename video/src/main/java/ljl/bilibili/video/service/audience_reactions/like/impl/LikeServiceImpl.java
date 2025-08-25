@@ -36,6 +36,7 @@ public class LikeServiceImpl implements LikeService {
             LambdaQueryWrapper<VideoData> videoDataLambdaQueryWrapper=new LambdaQueryWrapper<>();
             videoDataLambdaQueryWrapper.eq(VideoData::getId,likeRequest.getVideoId());
             //根据type值在点赞消息消费者中做出新增或删除操作
+            // todo:发送点赞消息到消息队列
             client.sendLikeNotice(likeRequest.toAddOrDeleteNotice().setType(0));
         });
         return Result.success(true);
@@ -55,6 +56,7 @@ public class LikeServiceImpl implements LikeService {
         }else {
             wrapper.isNull(Like::getCommentId);
         }
+        // todo：取消点赞消息发送到队列
         client.sendLikeNotice(likeRequest.toAddOrDeleteNotice().setType(1));
         likeMapper.delete(wrapper);
         return Result.success(true);

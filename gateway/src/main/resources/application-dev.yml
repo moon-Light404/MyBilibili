@@ -58,10 +58,10 @@ spring:
           uri: http://localhost:30000
           predicates:
             - Path=/changeNoticeStatus/**,/getNotice/**
-        - id: route2
-          uri: http://localhost:3000
+        - id: route2    # 路由ID
+          uri: http://localhost:3000  # 目标服务地址
           predicates:
-            - Path=/ensemble/**,/follow/**,/selfCenter/**,/userInfo/**
+            - Path=/ensemble/**,/follow/**,/selfCenter/**,/userInfo/**  # 路由匹配规则（这些路径的请求会转发到uri）
         - id: route3
           uri: http://localhost:10201
           predicates:

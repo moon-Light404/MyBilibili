@@ -11,32 +11,40 @@ import java.util.List;
 
 @Mapper
 public interface ChatServiceMapper {
-    @Select("select u.cover,u.nickname,u.id as userId,s.id as sessionId,s.update_time as updateTime,s.update_content as updateContent from chat_session s inner join user u on s.receiver_id=u.id where s.sender_id=#{userId}")
+    @Select("select u.cover,u.nickname,u.id " +
+            "as userId,s.id as sessionId,s.update_time as updateTime,s.update_content as updateContent " +
+            "from chat_session s inner join user u on s.receiver_id=u.id where s.sender_id=#{userId}")
     List<ChatSessionResponse> getSelfSession(Integer userId);
-    @Select("select u.cover,u.nickname,u.id as userId,s.id as sessionId,s.update_time as updateTime,s.update_content as updateContent from chat_session s inner join user u on s.sender_id=u.id where s.receiver_id=#{userId}")
+
+    @Select("select u.cover,u.nickname,u.id " +
+            "as userId,s.id as sessionId,s.update_time as updateTime," +
+            "s.update_content as updateContent " +
+            "from chat_session s inner join user u on s.sender_id=u.id where s.receiver_id=#{userId}")
     List<ChatSessionResponse> getOtherSession(Integer userId);
+
+
     @Select({
             "<script>",
             "SELECT",
             "    s.id    AS sessionId,",
             "    COUNT(*) AS noticeCount",
             "FROM",
-            "    chat_notice n",
+            "    chat_notice n", // 消息记录表
             "INNER JOIN",
-            "    chat_session s",
-            "ON",
+            "    chat_session s", // 聊天会话表
+            "ON", // A->B 和B->A是同一个会话
             "    (n.sender_id = s.sender_id AND n.receiver_id = s.receiver_id)",
             "    OR",
             "    (n.sender_id = s.receiver_id AND n.receiver_id = s.sender_id)",
             "WHERE",
-            "    n.status = 0",
-            "    AND n.receiver_id = #{userId}",
-            "    AND s.id IN",
+            "    n.status = 0", // 未读消息状态
+            "    AND n.receiver_id = #{userId}", // 接收者是当前用户
+            "    AND s.id IN", // 限定查询指定会话ID列表
             "    <foreach item='id' collection='sessionIds' open='(' separator=',' close=')'>",
             "        #{id}",
             "    </foreach>",
             "GROUP BY",
-            "    sessionId",
+            "    sessionId", // 按会话ID分组统计
             "</script>"
     })
     List<NoticeCount> getNoticeCounts(List<Integer> sessionIds,Integer userId);

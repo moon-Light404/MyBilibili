@@ -50,15 +50,26 @@ public class ChatServiceImpl implements ChatService {
     @Resource
     ChatServiceMapper chatServiceMapper;
     /**
-     *修改私聊消息状态
+     * 修改私聊消息状态（通常用于将未读消息标记为已读）
+     * @param changeChatStatusRequest 消息状态修改请求对象，包含接收者ID和当前用户ID
+     * 接收者receiver_id就是当前聊天会话的那一头，当前用户ID:user_id
+     * 当前用户(user_id)收到的、来自指定用户(receiver_id)的未读消息标记为已读
+     * 在当前窗口user_id是发送者，指定用户是接收者，将receiver_id发送过来的消息标记为已读）
+     * @return 操作结果，成功返回true
      */
     @Override
     public Result<Boolean> changeChatStatus(ChangeChatStatusRequest changeChatStatusRequest) {
+        // 创建Chat实体的更新条件构造器
         LambdaUpdateWrapper<Chat> wrapper = new LambdaUpdateWrapper<>();
+        // 设置消息状态为1（已读状态）
         wrapper.set(Chat::getStatus, 1);
+        // 条件：发送者ID等于请求中的接收者ID（对方发送的消息）
         wrapper.eq(Chat::getSenderId, changeChatStatusRequest.getReceiverId());
+        // 条件：接收者ID等于请求中的当前用户ID（当前用户接收的消息）
         wrapper.eq(Chat::getReceiverId, changeChatStatusRequest.getUserId());
+        // 执行更新操作（更新符合条件的消息状态）
         chatMapper.update(null, wrapper);
+        // 返回操作成功结果
         return Result.success(true);
     }
     /**
@@ -70,7 +81,7 @@ public class ChatServiceImpl implements ChatService {
         return Result.data(new TempSessionResponse().setCover(u.getCover()).setNickName(u.getNickname()));
     }
     /**
-     *修改回话的最后聊天时间和内容
+     *修改会话chat_session的最后聊天时间和内容
      */
     @Override
     public Result<Boolean> changeChatSessionTime(ChatSessionRequest chatSessionRequest) {
@@ -82,90 +93,161 @@ public class ChatServiceImpl implements ChatService {
         chatSessionMapper.update(null, wrapper);
         return Result.success(true);
     }
+
+
     /**
-     *获取历史会话列表
+     * 获取用户的历史聊天会话列表
+     * 包含会话基本信息、未读消息数及最新更新时间，并按时间倒序排序
+     * @param userId 当前用户ID（用于查询该用户参与的所有会话）
+     * @return 封装了会话列表的Result对象，每一个元素包含会话ID、对方信息、未读消息数、最后一次聊天内容、最后一次聊天时间等
      */
     @Override
     public Result<List<ChatSessionResponse>> getHistoryChatSession(Integer userId) {
-        List<ChatSessionResponse> selfResponses= chatServiceMapper.getSelfSession(userId);
-        List<ChatSessionResponse> otherResponses= chatServiceMapper.getOtherSession(userId);
+        // 查询当前用户作为「发送者」的会话列表（正向会话）
+        List<ChatSessionResponse> selfResponses = chatServiceMapper.getSelfSession(userId);
+        // 查询当前用户作为「接收者」的会话列表（反向会话）
+        List<ChatSessionResponse> otherResponses = chatServiceMapper.getOtherSession(userId);
+        // 合并正向和反向会话列表，确保会话完整性（避免遗漏与其他用户的双向会话）
         selfResponses.addAll(otherResponses);
-        List<Integer> idList=new ArrayList<>();
-        //获取会话集合的id集合
-        for(ChatSessionResponse sessionResponse : selfResponses){
+
+        // 提取所有会话的ID，用于批量查询未读消息数
+        List<Integer> idList = new ArrayList<>();
+        // 遍历合并后的会话列表，收集会话ID
+        for (ChatSessionResponse sessionResponse : selfResponses) {
             idList.add(sessionResponse.getSessionId());
         }
-        if(idList.size()>0){
-            //获取每个会话的未读消息数和设置每个会话的未读状态
-            List<NoticeCount> noticeCounts= chatServiceMapper.getNoticeCounts(idList,userId);
-            for(ChatSessionResponse sessionResponse : selfResponses){
-                for(NoticeCount noticeCount : noticeCounts){
-                    if(noticeCount.getSessionId().equals(sessionResponse.getSessionId())){
-                        if(noticeCount.getNoticeCount()>0){
+
+        // 若存在会话，查询每个会话的未读消息数并更新会话状态
+        if (idList.size() > 0) {
+            // 批量获取指定会话ID列表中，当前用户未读的消息数（NoticeCount包含sessionId和noticeCount）
+            List<NoticeCount> noticeCounts = chatServiceMapper.getNoticeCounts(idList, userId);
+
+            // 遍历每个会话，匹配对应的未读消息数并设置状态
+            for (ChatSessionResponse sessionResponse : selfResponses) {
+                for (NoticeCount noticeCount : noticeCounts) {
+                    // 会话ID匹配时，更新未读消息数和状态
+                    if (noticeCount.getSessionId().equals(sessionResponse.getSessionId())) {
+                        // 若未读消息数>0，设置未读数量并标记会话为「未读状态」（status=false）
+                        if (noticeCount.getNoticeCount() > 0) {
                             sessionResponse.setCount(noticeCount.getNoticeCount());
-                            sessionResponse.setStatus(false);
-                            break;
+                            sessionResponse.setStatus(false); // false表示有未读消息
+                            break; // 匹配到当前会话后跳出内层循环，避免重复处理
                         }
                     }
                 }
             }
         }
-        //按创建时间倒序排
-        if(selfResponses.size()>0){
+        // 按会话最后更新时间倒序排序（最新活跃的会话排在最前面）
+        if (selfResponses.size() > 0) {
             selfResponses = selfResponses.stream()
-                    .sorted(Comparator.comparing(ChatSessionResponse::getUpdateTime).reversed())
+                    .sorted(Comparator.comparing(ChatSessionResponse::getUpdateTime).reversed()) // 按updateTime降序
                     .collect(Collectors.toList());
         }
+        // 返回封装了会话列表的成功结果
         return Result.data(selfResponses);
     }
+
+
+
+
     /**
-     *新增聊天会话和内容
+     * 新增聊天会话和内容
+     * 处理逻辑：检查会话是否已存在，不存在则创建新会话，存在则更新会话最后时间和内容，同时保存聊天消息
+     * @param chatSessionRequest 聊天会话请求对象，包含发送者ID、接收者ID、聊天内容等信息
+     * @return 操作结果，成功返回true
+     *
+     *
      */
     @Override
     public Result<Boolean> addChatSessionAndContent(ChatSessionRequest chatSessionRequest) {
-        //查询之前是否存在自己向他人或他人向自己发起的会话
+        // 查询之前是否存在自己向他人发起的会话（正向会话）
         LambdaQueryWrapper<ChatSession> wrapper1 = new LambdaQueryWrapper<>();
         wrapper1.eq(ChatSession::getSenderId, chatSessionRequest.getSenderId());
         wrapper1.eq(ChatSession::getReceiverId, chatSessionRequest.getReceiverId());
+
+        // 查询之前是否存在他人向自己发起的会话（反向会话）
         LambdaQueryWrapper<ChatSession> wrapper2 = new LambdaQueryWrapper<>();
         wrapper2.eq(ChatSession::getSenderId, chatSessionRequest.getReceiverId());
         wrapper2.eq(ChatSession::getReceiverId, chatSessionRequest.getSenderId());
-        ChatSession c1=chatSessionMapper.selectOne(wrapper1);
-        ChatSession c2=chatSessionMapper.selectOne(wrapper2);
-        ChatSession chatSession=chatSessionRequest.toSessionEntity();
+
+        // 执行查询，获取正向和反向会话
+        ChatSession c1 = chatSessionMapper.selectOne(wrapper1);
+        ChatSession c2 = chatSessionMapper.selectOne(wrapper2);
+
+        // 将请求参数转换为会话实体，并设置最后更新时间
+        ChatSession chatSession = chatSessionRequest.toSessionEntity();
         chatSession.setUpdateTime(LocalDateTime.now());
-        //如果查询过后发现该会话之前并未存在
-        if ( c1== null && c2 == null) {
+
+        /**
+         * 如果正向和反向会话均不存在（首次创建会话）
+         * 会话只存储单向的
+          */
+        if (c1 == null && c2 == null) {
+            // 插入新的聊天会话记录
             chatSessionMapper.insert(chatSession);
-        }else {
-            chatServiceMapper.updateChatSession(chatSessionRequest.getUpdateContent(), LocalDateTime.now(),chatSessionRequest.getSenderId(),chatSessionRequest.getReceiverId());
+        } else {
+            // 会话已存在，更新会话的最后聊天内容和时间
+            chatServiceMapper.updateChatSession(
+                chatSessionRequest.getUpdateContent(),
+                LocalDateTime.now(),
+                chatSessionRequest.getSenderId(),
+                chatSessionRequest.getReceiverId()
+            );
         }
+
+        // 将聊天内容插入聊天记录表（关联当前会话的最新内容）
         chatMapper.insert(chatSessionRequest.toChatEntity().setContent(chatSession.getUpdateContent()));
+
+        // 返回操作成功结果
         return Result.success(true);
     }
+
+
     /**
      *获取某会话历史聊天内容
      */
+    /**
+     * 获取指定用户间的历史聊天记录
+     * 包含双方发送的所有消息，并按消息创建时间倒序排序（最新消息在前）
+     * @param userId 当前用户ID（消息发送者或接收者）
+     * @param receiverId 聊天对方用户ID（消息接收者或发送者）
+     * @return 封装了历史消息列表的Result对象，每条消息包含发送者、接收者、内容、时间等信息
+     */
     @Override
     public Result<List<HistoryChatResponse>> getHistoryChat(Integer userId, Integer receiverId) {
+        // 构建查询条件1：当前用户作为发送者，对方作为接收者的消息
         LambdaQueryWrapper<Chat> wrapper1 = new LambdaQueryWrapper<>();
         wrapper1.eq(Chat::getSenderId, userId);
         wrapper1.eq(Chat::getReceiverId, receiverId);
+
+        // 构建查询条件2：当前用户作为接收者，对方作为发送者的消息（双向消息查询）
         LambdaQueryWrapper<Chat> wrapper2 = new LambdaQueryWrapper<>();
         wrapper2.eq(Chat::getReceiverId, userId);
         wrapper2.eq(Chat::getSenderId, receiverId);
+
+        // 执行查询：获取当前用户发送给对方的消息列表
         List<Chat> list1 = chatMapper.selectList(wrapper1);
+        // 执行查询：获取对方发送给当前用户的消息列表
         List<Chat> list2 = chatMapper.selectList(wrapper2);
+
+        // 合并双向消息列表，形成完整的聊天记录
         list1.addAll(list2);
+
+        // 将Chat实体列表转换为HistoryChatResponse DTO列表（适配前端展示）
         List<HistoryChatResponse> responses = new ArrayList<>();
         for (Chat chat : list1) {
             responses.add(new HistoryChatResponse(chat));
         }
+        // 按消息创建时间倒序排序（确保最新消息显示在最前面）
         responses = responses.stream()
                 .sorted(Comparator.comparing(HistoryChatResponse::getCreateTime).reversed())
                 .collect(Collectors.toList());
+
+        // 返回封装了排序后历史消息列表的结果
         return Result.data(responses);
     }
+
+
     public PPTResponse getPPT(String describe) throws IOException {
         long timestamp = System.currentTimeMillis() / 1000;
         String ts = String.valueOf(timestamp);

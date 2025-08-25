@@ -53,6 +53,7 @@ public class CommentServiceImpl implements CommentService {
         wrapper.eq(Video::getId,comment.getVideoId());
         //只有该评论不是自己对自己发送的才会生成评论通知
         if(!videoMapper.selectOne(wrapper).getUserId().equals(commentRequest.getUserId())){
+            // todo:发送评论消息到消息队列
             client.sendCommentNotice(commentRequest.toNotice().setSenderId(comment.getId()));
         }
         return Result.success(true);

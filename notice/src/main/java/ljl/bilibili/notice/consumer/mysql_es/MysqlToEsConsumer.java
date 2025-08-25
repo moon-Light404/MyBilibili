@@ -56,7 +56,6 @@ public class MysqlToEsConsumer implements RocketMQListener<MessageExt> {
                 map.remove(TABLE_NAME);
                 objectRedisTemplate.opsForList().rightPush(USER_ADD_KEY,map);
             }
-
         }
 
         else if(map.get(OPERATION_TYPE).equals(OPERATION_TYPE_DELETE)){

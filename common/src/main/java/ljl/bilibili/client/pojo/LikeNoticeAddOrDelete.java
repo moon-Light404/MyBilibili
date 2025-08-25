@@ -12,17 +12,29 @@ import java.time.LocalDateTime;
 public class LikeNoticeAddOrDelete {
 
     private Integer id;
-
+    /**
+     * 点赞用户id
+     */
     private Integer senderId;
-
+    /**
+     * 点赞所在的视频ID
+     */
     private Integer videoId;
-
+    /**
+     * 被点赞的评论id
+     */
     private Integer commentId;
-
+    /**
+     * 消息生成时间
+     */
     private LocalDateTime createTime;
-
+    /**
+     * 未读已读
+     */
     private Integer status;
-
+    /**
+     * 增加/删除
+     */
     private Integer type;
     public LikeNotice toNotice(){
         LikeNotice likeNotice=new LikeNotice();

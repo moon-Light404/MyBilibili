@@ -7,6 +7,6 @@ import lombok.Data;
 public class NoticeCount {
     //私聊会话id
     private Integer sessionId;
-    //私聊数
+    // 消息未读数
     private Integer noticeCount;
 }

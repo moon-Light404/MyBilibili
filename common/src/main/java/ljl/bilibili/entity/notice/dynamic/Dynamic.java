@@ -6,6 +6,7 @@ import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
 
+// 视频动态
 @TableName("dynamic")
 @Data
 @Accessors(chain = true)

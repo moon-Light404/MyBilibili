@@ -36,6 +36,8 @@ public class MinioServiceImpl implements MinioService {
     public Boolean composePart(String resumableIdentifier,String name) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         List<ComposeSource> composeSourceList=new ArrayList<>();
         //获取分片信息并封装成ComposeSource类的集合，合并到一起
+        // getPartMap中存储了分片索引--> 分片文件名的映射
+        // 获取所有分片文件组成List，使用composeObject合并视频文件
         for(Map.Entry<Integer,String> entry : uploadPartMap.get(resumableIdentifier).getPartMap().entrySet()){
             composeSourceList.add(ComposeSource.builder().bucket("video").object(entry.getValue()).build());
         }

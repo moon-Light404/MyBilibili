@@ -26,5 +26,8 @@ public class Constant {
     public static final String OPERATION_TYPE_DELETE="delete";
     public static final String OPERATION_TYPE_UPDATE="update";
     public static final Map<Integer, List<FirstPageVideoResponse>> map=new ConcurrentHashMap<>();
+    /**
+     * 文件标识符-上传分片信息（一个文件对应一个）
+     */
     public static Map<String, UploadPart> uploadPartMap=new HashMap<>();
 }

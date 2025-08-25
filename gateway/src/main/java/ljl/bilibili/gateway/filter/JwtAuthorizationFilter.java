@@ -25,7 +25,16 @@ import static ljl.bilibili.gateway.constant.Constant.JWT_ROLE;
 //@Component
 @Slf4j
 public class JwtAuthorizationFilter implements WebFilter {
-
+    /**
+     * 1. 请求日志与安全头校验
+     * 日志过滤：仅记录业务接口请求路径（排除静态资源 webjars、文档 swagger 等冗余路径）。
+     * CSRF 防护：验证请求头 SAFE_REQUEST_HEADER（自定义安全头），缺失则返回 400 Bad Request（拦截非网站源请求）。
+     * 2. JWT 令牌解析与权限注入
+     * 令牌提取：从请求头 SHORT_TOKEN 获取 JWT 短期令牌。
+     * 令牌验证：通过 JwtUtil.getClaimsFromToken(jwt) 自动验证签名（使用 SECRET_KEY）和过期时间，失败则抛出异常。
+     * 权限构建：固定创建 "role:user" 权限（SimpleGrantedAuthority），与 SecurityConfig 中 hasAuthority("role:user") 规则匹配。
+     * 认证上下文注入：将权限信息封装为 Authentication 对象，存入 SecurityContext 并通过 ReactiveSecurityContextHolder 绑定到响应式请求上下文，供后续流程（如 Controller）获取用户身份。
+     */
     /**
      *打印请求路径，用自定义请求头隔绝csrf攻击，取出token认证用户与验证权限
      */
@@ -64,6 +73,7 @@ public class JwtAuthorizationFilter implements WebFilter {
         context.setAuthentication(authentication);  // 将认证对象存入安全上下文
 
         // 将安全上下文写入请求链，使后续拦截器/控制器能获取用户认证信息
+            // 显式将请求传递给过滤器链的 下一个过滤器（若存在）
         return chain.filter(exchange)
             .contextWrite(ReactiveSecurityContextHolder.withSecurityContext(Mono.just(context)));
         }
