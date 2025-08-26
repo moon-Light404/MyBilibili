@@ -26,7 +26,7 @@ public class ChatController {
     /**
      * 根据文本描述生成PPT文档
      * @param describe PPT内容描述文本（如"生成一份Spring Boot入门PPT"）
-     * @return PPTResponse - 包含生成的PPT文件信息（如下载链接、文件名等）
+     * @return PPTResponse - 包含生成的PPT文件信息（如封面、PPT详情等）
      * @throws IOException 文档生成过程中IO异常
      * @throws InterruptedException 线程等待超时异常（如调用外部API时）
      */

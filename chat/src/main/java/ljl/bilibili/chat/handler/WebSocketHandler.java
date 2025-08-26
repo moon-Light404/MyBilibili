@@ -49,14 +49,19 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @EventListener
     @Async
     /**
-     *监听大模型响应事件并返回相应客户端
+     * 监听大模型响应事件并返回相应客户端（服务器内部事件触发的推送消息）
+     *      大模型处理完成后的响应结果，将结果主动推送给客户端
+     *      用于服务端异步处理完成后，将结果反馈给客户端
+     *      当服务端其他组件（如大模型处理器 BigModelHandler ) 通过 ApplicationEventPublisher 发布 MessageEvent时，由 Spring 的事件机制自动触发。
      */
     public void handleMessageEvent(MessageEvent event) throws IOException {
         ChatMessage message = gson.fromJson(event.getMessage(), ChatMessage.class);
         JsonObject jsonText = new JsonObject();
+        // 构建大模型回复消息的JSON对象
         jsonText.addProperty(MESSAGE_STATUS, message.getStatus());
         jsonText.addProperty(MESSAGE_TYPE, MESSAGE_TYPE_BIGMODEL);
         jsonText.addProperty(MESSAGE_CONTENT, message.getContent());
+        // 发送大模型回复消息到指定用户的WebSocket会话
         WEB_SOCKET_SESSION_CONCURRENT_MAP.get(USERID_TO_SESSIONID_MAP.get(message.getUserId())).sendMessage(new TextMessage(jsonText.toString()));
     }
     /**
@@ -193,6 +198,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         // "sessionId" : sessionId
         json.addProperty(MESSAGE_TYPE, MESSAGE_TYPE_SESSIONID);
         json.addProperty(MESSAGE_TYPE_SESSIONID, session.getId());
+        // 向客户端发送会话标识消息，携带客户端sessionId
         session.sendMessage(new TextMessage(json.toString()));
         log.info("连接成功");
     }

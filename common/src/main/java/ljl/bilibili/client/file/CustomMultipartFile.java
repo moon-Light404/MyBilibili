@@ -56,6 +56,11 @@ public class CustomMultipartFile implements MultipartFile {
         return fileContent;
     }
 
+    /**
+     * 将字节数组fileContent 转换为InputStream流
+     * 用于远程调用时传递Inputstream流，方面调用者通过流的方式读取文件内容
+     * @return
+     */
     @Override
     public InputStream getInputStream()  {
       InputStream inputStream=IoUtil.toStream(getBytes());

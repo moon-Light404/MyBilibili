@@ -54,15 +54,22 @@ public class BigModelHandler extends WebSocketListener {
      * 向大模型提问
      */
     public void send(String text, String id) throws Exception {
+        // 绑定当前提问用户ID（用于后续消息推送）
         userId = id;
         System.out.print("我：");
         NewQuestion = text;
+        // 生成大模型服务的鉴权URL
         String authUrl = getAuthUrl(hostUrl, apiKey, apiSecret);
         OkHttpClient client = new OkHttpClient.Builder().build();
+        // 将HTTP URL转换为WebSocket URL
         String url = authUrl.replace("http://", "ws://").replace("https://", "wss://");
+        // 构建WebSocket连接请求
         Request request = new Request.Builder().url(url).build();
+        // 清空历史回答缓存
         totalAnswer = "";
+        // 建立WebSocket连接（当前类即监听器）
         WebSocket webSocket = client.newWebSocket(request, this);
+        // 调用run方法发送具体请求数据
         run(webSocket);
     }
 
@@ -103,6 +110,7 @@ public class BigModelHandler extends WebSocketListener {
     public void onMessage(WebSocket webSocket, String text) {
         try {
             log.info("线程1");
+            // 1.解析大模型的json响应
             JsonParse myJsonParse = gson.fromJson(text, JsonParse.class);
             Integer status = myJsonParse.header.status;
             if (myJsonParse.header.code != 0) {
@@ -111,6 +119,7 @@ public class BigModelHandler extends WebSocketListener {
                 System.out.println("本次请求的sid为：" + myJsonParse.header.sid);
                 webSocket.close(1000, "");
             }
+            // 2. 提取响应内容（包含多段文本）
             List<Text> textList = myJsonParse.payload.choices.text;
             for (Text temp : textList) {
                 ChatMessage chatMessage = new ChatMessage(temp.content, userId, status);
@@ -124,8 +133,10 @@ public class BigModelHandler extends WebSocketListener {
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
+                // 发布事件
 //                    publishMessage(jsonChat);
 //                });
+
                 totalAnswer = totalAnswer + temp.content;
             }
             if (myJsonParse.header.status == 2) {
@@ -254,10 +265,12 @@ public class BigModelHandler extends WebSocketListener {
         try {
             JSONObject requestJson = new JSONObject();
 
+            // 构建Header，包含应用标识、会话ID
             JSONObject header = new JSONObject();
             header.put(MODEL_APP_ID, appId);
             header.put(SESSION_UID, UUID.randomUUID().toString().substring(0, 10));
 
+            // 构建Parameter，包含模型参数
             JSONObject parameter = new JSONObject();
             JSONObject chat = new JSONObject();
             chat.put(MODEL_DOMAIN, MODEL_DOMAIN_VALUE);
@@ -265,10 +278,11 @@ public class BigModelHandler extends WebSocketListener {
             chat.put(MODEL_MAX_TOKENS, 8000);
             parameter.put(MODEL_PARAMETER, chat);
 
+            // 核心对话内容，包含历史对话记录
             JSONObject payload = new JSONObject();
             JSONObject message = new JSONObject();
             JSONArray text = new JSONArray();
-
+            // 历史对话记录
             if (historyList.size() > 0) {
                 for (RoleContent tempRoleContent : historyList) {
                     text.add(JSON.toJSON(tempRoleContent));
@@ -283,8 +297,11 @@ public class BigModelHandler extends WebSocketListener {
             historyList.add(roleContent);
             message.put(MESSAGE_TEXT, text);
             payload.put(PAYLOAD_MESSAGE, message);
+            // Header: 应用标识、会话ID
             requestJson.put(REQUEST_HEADER, header);
+            // Parameter：配置模型行为，参数
             requestJson.put(REQUEST_PARAMTER, parameter);
+            // Payload：核心对话内容，包含历史对话记录
             requestJson.put(REQUEST_PAYLOAD, payload);
             webSocket.send(requestJson.toString());
 
@@ -308,3 +325,9 @@ public class BigModelHandler extends WebSocketListener {
         return true;
     }
 }
+
+/**
+ * 1. 为什么 onMessage 能监听到请求后的响应？
+ * BigModelHandler 继承自 OkHttp 的 WebSocketListener，该类是 WebSocket 客户端的监听器，用于处理服务端发送的消息、连接状态变化等事件。
+ * 当通过 send 方法向大模型服务发送请求后，大模型的响应会通过 WebSocket 协议异步推送到客户端，此时 OkHttp 会自动触发 onMessage 回调。
+ */

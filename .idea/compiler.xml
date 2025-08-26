@@ -8,7 +8,13 @@
         <outputRelativeToContentRoot value="true" />
         <module name="eureka-service" />
         <module name="AAA" />
+        <module name="search" />
+        <module name="common" />
+        <module name="user_center" />
+        <module name="chat" />
         <module name="video" />
+        <module name="gateway" />
+        <module name="notice" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>

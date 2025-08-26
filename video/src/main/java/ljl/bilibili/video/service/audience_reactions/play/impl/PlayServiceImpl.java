@@ -62,7 +62,7 @@ public class PlayServiceImpl implements PlayService {
         wrapper.eq(Play::getVideoId,videoId);
         wrapper.eq(Play::getUserId,userId);
         //如果已经增加过了则不新增播放记录
-        if(playMapper.selectList(wrapper).size()>0){
+        if(!playMapper.selectList(wrapper).isEmpty()){
             return Result.success(HAS_PLAY);
         }else {
             playMapper.insert(new Play().setVideoId(videoId).setUserId(userId));

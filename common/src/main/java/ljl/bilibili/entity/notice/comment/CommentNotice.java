@@ -6,6 +6,9 @@ import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
 
+/**
+ * 评论消息通知表
+ */
 @Data
 @TableName("comment_notice")
 @Accessors(chain = true)

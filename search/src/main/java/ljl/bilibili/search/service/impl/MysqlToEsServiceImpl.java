@@ -160,7 +160,9 @@ public class MysqlToEsServiceImpl implements MysqlToEsService {
         }
         Map<Integer, Integer> fansCountMap = new HashMap<>();
         Map<Integer, Integer> videoCountMap = new HashMap<>();
+        // 关注数量
         List<IdCount> idCountList = followMapper.getIdolCount(ids);
+        // 视频数量
         List<IdCount> videoCountList=followMapper.getVideoCount(ids);
         for (IdCount idCount : idCountList) {
             fansCountMap.put(idCount.getId(), idCount.getCount());

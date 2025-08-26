@@ -85,15 +85,14 @@ public class MysqlToEsHandler {
 
         // 同步顺序控制：先执行新增/删除操作，再执行更新操作
         // 避免更新时目标文档尚未创建或已被删除导致的无效操作
-        if (videoAddList.size() > 0) {
+        if (!videoAddList.isEmpty()) {
             mysqlAddToEs(Constant.OPERATION_ADD, videoAddList, Constant.VIDEO_INDEX_NAME);  // 批量处理视频新增
         }
-        if (videoDeleteList.size() > 0) {
-            // 注意：此处代码可能存在参数错误（使用videoAddList而非videoDeleteList），建议核实业务逻辑
+        if (!videoDeleteList.isEmpty()) {
             mysqlAddToEs(Constant.OPERATION_DELETE, videoAddList, Constant.VIDEO_INDEX_NAME);  // 批量处理视频删除
         }
 
-        if (userAddList.size() > 0) {
+        if (!userAddList.isEmpty()) {
             mysqlAddToEs(Constant.OPERATION_ADD, userAddList, Constant.USER_INDEX_NAME);    // 批量处理用户新增
         }
 
@@ -139,6 +138,7 @@ public class MysqlToEsHandler {
         //批量添加请求
         BulkRequest bulkRequest;
         List<DocWriteRequest> docWriteRequestList = new ArrayList<>();
+        // 新增
         if (requestType.equals("add")) {
             bulkRequest = new BulkRequest();
             for (Map<String, Object> document : list) {
@@ -181,6 +181,7 @@ public class MysqlToEsHandler {
                     }
                 }
             }
+            // 删除
         } else {
             bulkRequest = new BulkRequest();
             for (Map<String, Object> document : list) {
@@ -204,14 +205,17 @@ public class MysqlToEsHandler {
         //递归将收集到的失败操作统一递归再调用自己方法最大程度减少失败请求次数，同时设定次数为10防止递归过多堆栈溢出
         if (bulkResponse.hasFailures() && maxRetry > 0) {
             BulkRequest bulkRequest1 = new BulkRequest();
+            // 遍历bulkResponse，找到失败的操作并添加到新的批量请求中
             for (int i = 0; i < bulkResponse.getItems().length; i++) {
                 BulkItemResponse itemResponse = bulkResponse.getItems()[i];
                 if (itemResponse.isFailed()) {
                     bulkRequest1.add(list.get(i));
                 }
             }
-            return bulkOpreateUntilAllSucess(bulkRequest, list, maxRetry - 1);
-        } else {
+            return bulkOpreateUntilAllSucess(bulkRequest1, list, maxRetry - 1);
+        }
+        // 没有失败的操作返回true
+        else {
             return true;
         }
     }

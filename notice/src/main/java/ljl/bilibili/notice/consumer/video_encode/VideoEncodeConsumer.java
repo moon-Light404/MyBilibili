@@ -74,6 +74,7 @@ import static ljl.bilibili.notice.constant.Constant.*;
         consumeMode = ConsumeMode.ORDERLY
 )
 @Slf4j
+@Deprecated
 public class VideoEncodeConsumer implements RocketMQListener<MessageExt> {
     @Autowired
     ObjectMapper objectMapper;

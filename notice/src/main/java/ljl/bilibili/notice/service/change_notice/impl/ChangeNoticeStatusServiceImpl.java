@@ -35,13 +35,19 @@ public class ChangeNoticeStatusServiceImpl implements ChangeNoticeStatusService 
 @Override
     public Result<Boolean> changeLikeNoticeStatus(LikeNoticeStatusChangeRequest likeNoticeStatusChangeRequest) {
     //修改对视频的点赞消息为已读
-        UpdateJoinWrapper<Video> videoUpdateJoinWrapper= JoinWrappers.update(Video.class);
-        videoUpdateJoinWrapper.eq(Video::getUserId,likeNoticeStatusChangeRequest.getUserId());
-        videoUpdateJoinWrapper.leftJoin(LikeNotice.class,LikeNotice::getVideoId,Video::getId);
+        UpdateJoinWrapper<Video> videoUpdateJoinWrapper = JoinWrappers.update(Video.class);
+        // 条件1：目标用户 ID（确保只更新当前用户的通知）
+        videoUpdateJoinWrapper.eq(Video::getUserId, likeNoticeStatusChangeRequest.getUserId());
+        // 关联查询：通过视频 ID 关联点赞通知表（LikeNotice）
+        videoUpdateJoinWrapper.leftJoin(LikeNotice.class, LikeNotice::getVideoId, Video::getId);
+        // 条件2：点赞类型为“视频点赞”（CommentId 为空表示不是对评论的点赞）
         videoUpdateJoinWrapper.isNull(LikeNotice::getCommentId);
-        videoUpdateJoinWrapper.eq(LikeNotice::getStatus,0);
-        videoUpdateJoinWrapper.set(LikeNotice::getStatus,1);
-        videoMapper.updateJoin(null,videoUpdateJoinWrapper);
+        // 条件3：通知状态为“未读”（status=0）
+        videoUpdateJoinWrapper.eq(LikeNotice::getStatus, 0);
+        // 更新操作：将未读状态（0）改为已读（1）
+        videoUpdateJoinWrapper.set(LikeNotice::getStatus, 1);
+        // 执行联表更新（通过 VideoMapper 调用 MyBatis-Plus-Join 插件的联表更新能力）
+        videoMapper.updateJoin(null, videoUpdateJoinWrapper);
         //修改对评论的点赞消息为已读
         UpdateJoinWrapper<Comment> commentUpdateJoinWrapper=JoinWrappers.update(Comment.class);
         commentUpdateJoinWrapper.eq(Comment::getUserId,likeNoticeStatusChangeRequest.getUserId());

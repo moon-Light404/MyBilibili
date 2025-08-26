@@ -99,27 +99,34 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
                 String imgContentType = "image/jpeg";
                 String coverFileName = video.getName() + UUID.randomUUID().toString().substring(0, 8) + ".jpg";
                 video.setCover(prefixPath + coverFileName);
+                // 1.视频记录信息插入到video表中
                 videoMapper.insert(video);
+                // 2.视频数据记录插入到video_data表中
                 videoDataMapper.insert(new VideoData().setVideoId(video.getId()));
+                // 3.上传封面到Minio
                 CustomMultipartFile coverMultipartFile = new CustomMultipartFile(decodedBytes, coverFileName, imgContentType);
                 queryWrapper.eq(Video::getCover, UUID.randomUUID().toString().substring(0, 8) + coverFileName);
                 minioService.uploadImgFile(coverFileName, coverMultipartFile.getInputStream(), imgContentType);
-                // 视频上传消息发送到队列
+                // 4.视频上传消息发送到消息队列
                 client.sendUploadNotice(new UploadVideo().setVideoId(video.getId()).setVideoName(video.getName()).setUrl(url).setHasCover(true));
                 User user = userMapper.selectById(uploadVideoRequest.getUserId());
-                // 视频动态推送到队列
+                // 5.视频动态推送到消息队列
                 client.dynamicNotice(uploadVideoRequest.toCoverDynamic(user, video));
                 // 视频无封面
             } else {
+                // 1.视频记录信息插入到video表中
                 videoMapper.insert(video);
+                // 2.视频数据记录插入到video_data表中
                 videoDataMapper.insert(new VideoData().setVideoId(video.getId()));
-                // 视频上传消息发送至队列
+                // 3.视频上传消息发送至消息队列
                 client.sendUploadNotice(new UploadVideo().setVideoId(video.getId()).setVideoName(video.getName()).setUrl(url).setHasCover(false));
                 User user = userMapper.selectById(uploadVideoRequest.getUserId());
-                // 视频动态推送到队列
+                // 4.视频动态推送到消息队列（推送动态给粉丝）
                 client.dynamicNotice(uploadVideoRequest.toNoCoverDynamic(user, video));
             }
-
+            /**
+             * 下面是发送数据同步消息，视频或用户变更---> 同步es
+             */
             CompletableFuture<Void> sendDBChangeNotice = CompletableFuture.runAsync(() -> {
                 ObjectMapper objectMapper = new ObjectMapper();
                 JavaTimeModule module = new JavaTimeModule();

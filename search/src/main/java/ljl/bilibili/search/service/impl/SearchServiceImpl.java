@@ -205,6 +205,7 @@ public class SearchServiceImpl implements SearchService {
     }
     /**
      *推荐视频查询
+     * 基于 Elasticsearch 的 More Like This Query（相似文档查询），根据当前视频 ID 推荐内容相似的视频
      */
     @Override
     public List<RecommendVideo> likelyVideoRecommend(String videoId) throws IOException {
@@ -219,16 +220,16 @@ public class SearchServiceImpl implements SearchService {
                         null,
                         null,
                         items
+                // 最小词频：源文档中词频 ≥1 的词才会用于相似度计算（避免低频无意义词
                 ).minTermFreq(1)
+                // 最大查询词数：最多提取 12 个关键词用于查询（防止查询过于宽泛）
                 .maxQueryTerms(12));
         List<RecommendVideo> list = new ArrayList<>();
         searchRequest.source(sourceBuilder);
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
         for (SearchHit searchHit : searchResponse.getHits().getHits()) {
             RecommendVideo recommendVideo = objectMapper.readValue(searchHit.getSourceAsString(), RecommendVideo.class);
-            if (!recommendVideo.getVideoId().equals(videoId)) {
-                list.add(recommendVideo);
-            }
+            list.add(recommendVideo);
         }
         return list;
     }

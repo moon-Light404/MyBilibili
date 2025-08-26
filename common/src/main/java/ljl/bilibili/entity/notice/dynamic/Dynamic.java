@@ -6,7 +6,9 @@ import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
 
-// 视频动态
+/**
+ * 视频动态表：记录用户发布视频的动态
+ */
 @TableName("dynamic")
 @Data
 @Accessors(chain = true)

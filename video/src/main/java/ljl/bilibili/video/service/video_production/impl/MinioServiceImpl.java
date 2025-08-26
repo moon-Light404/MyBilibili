@@ -46,6 +46,10 @@ public class MinioServiceImpl implements MinioService {
     }
     /**
      *上传视频文件
+     * @param fileName 文件名
+     * @param stream 输入流
+     * @param contentType 内容类型
+     * @return 上传成功返回true，失败返回false
      */
     @Override
     public Boolean uploadVideoFile(String fileName, InputStream stream, String contentType) {

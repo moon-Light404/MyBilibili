@@ -12,7 +12,9 @@ import org.springframework.beans.BeanUtils;
 import java.time.LocalDateTime;
 
 @Data
-
+/**
+ * 推荐视频响应体：视频数据都有，点赞、评论、收藏、播放
+ */
 public class CommendVideoResponse {
 
     Integer videoId;

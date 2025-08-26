@@ -57,15 +57,21 @@ public class DynamicConsumer implements RocketMQListener<MessageExt> {
             throw new RuntimeException(e);
         }
         log.info(dynamic.getVideoId().toString());
+        // 记录用户发布的动态到 视频动态表 中
         dynamicMapper.insert(dynamic);
-        //查询出该动态会推送给哪些人然后插入记录到中间联系表中
+
+        // 1.查询出该动态会推送给哪些人
+        // 2.然后插入记录到 [推送给用户的视频动态表] 中
         LambdaQueryWrapper<Follow> wrapper = new LambdaQueryWrapper<>();
+        // 3.查询关注是这个视频的作者的所有用户
         wrapper.eq(Follow::getIdolId, dynamic.getAuthorId());
         List<Follow> list = followMapper.selectList(wrapper);
         List<DynamicToUser> dynamicToUserList=new ArrayList<>();
+        // 4. 每个用户都会接收该动态: user_id --> dynamic_id
         for (Follow follow : list) {
             dynamicToUserList.add(new DynamicToUser().setUserId(follow.getFansId()).setDynamicId(dynamic.getId()));
         }
+        // 5.批量保存推送动态表
         dynamicToUserService.saveBatch(dynamicToUserList);
     }
 }
